@@ -4,7 +4,7 @@ setup(
     name='telelite',
     version='0.1.2',
     description='Lightweight Telegram Bot Library',
-    author='YourName',
+    author='Ahmed Negm',
     packages=find_packages(),
     install_requires=[
         'Flask>=2.2.5',
