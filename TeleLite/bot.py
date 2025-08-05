@@ -1,8 +1,9 @@
-import asyncio
 import json
 from functools import wraps
+from concurrent.futures import ThreadPoolExecutor
+import urllib3
 from quart import Quart, request
-import aiohttp
+import asyncio
 import hypercorn.asyncio
 import hypercorn.config
 
@@ -15,6 +16,9 @@ update_types = [
     'my_chat_member', 'chat_member', 'chat_join_request', 'chat_boost',
     'removed_chat_boost'
 ]
+
+http = urllib3.PoolManager()
+executor = ThreadPoolExecutor(max_workers=20)
 
 def safe_print(obj):
     try:
@@ -201,7 +205,7 @@ def match_filter(item, filt):
         except Exception:
             return False
     if isinstance(filt, dict) and isinstance(item, dict):
-        for k, v in filt.items():
+        for k,v in filt.items():
             if k not in item:
                 return False
             if isinstance(v, dict):
@@ -235,7 +239,6 @@ class Bot:
                     data = self._fix_reserved_keys(data)
                     await self._process_handlers(ut, data)
                 return '🚀', 200
-        self._session = None
 
     def _extract_update_type(self, update):
         for ut in update_types:
@@ -255,25 +258,27 @@ class Bot:
         return data
 
     async def _process_handlers(self, update_type, data):
+        loop = asyncio.get_running_loop()
+        futures = []
         for filt, handler in self.handlers.get(update_type, []):
             try:
                 ok = filt(data) if callable(filt) else match_filter(data, filt)
                 if ok:
-                    r = handler(data)
-                    if asyncio.iscoroutine(r):
-                        await r
+                    if asyncio.iscoroutinefunction(handler):
+                        futures.append(asyncio.create_task(handler(data)))
+                    else:
+                        futures.append(loop.run_in_executor(executor, handler, data))
             except Exception as e:
                 print(f"Handler error: {e}")
+        if futures:
+            await asyncio.gather(*futures)
 
     def _handler_decorator(self, update_type, filter_):
         def decorator(fn):
             self.handlers[update_type].append((filter_, fn))
             @wraps(fn)
             def wrapper(*args, **kwargs):
-                res = fn(*args, **kwargs)
-                if asyncio.iscoroutine(res):
-                    return asyncio.run(res)
-                return res
+                return fn(*args, **kwargs)
             return wrapper
         return decorator
 
@@ -346,15 +351,15 @@ class Bot:
     def on_removed_chat_boost(self, filter_=None):
         return self._handler_decorator('removed_chat_boost', filter_)
 
-    async def __call__(self, method: str, **params):
-        if not self._session:
-            self._session = aiohttp.ClientSession()
+    async def call_method(self, method: str, **params):
         url = f"{self.api_url}/{method}"
+        encoded_params = json.dumps(params).encode('utf-8')
         headers = {'Content-Type': 'application/json'}
-        async with self._session.post(url, json=params, headers=headers) as resp:
-            data = await resp.json()
-            safe_print(data)
-            return data
+        def post_request():
+            response = http.request('POST', url, body=encoded_params, headers=headers)
+            return json.loads(response.data.decode('utf-8'))
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(executor, post_request)
 
     def run(self):
         if self.webhook:
@@ -362,4 +367,6 @@ class Bot:
             config.bind = ["0.0.0.0:5000"]
             asyncio.run(hypercorn.asyncio.serve(self.app, config))
         else:
-            raise RuntimeError("Webhook mode only, no polling implemented for speed")
+            raise RuntimeError("Only webhook mode supported for speed optimization")
+
+filters = Filters()
