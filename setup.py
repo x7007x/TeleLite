@@ -9,7 +9,8 @@ setup(
     install_requires=[
         'Flask>=2.2.5',
         'aiohttp>=3.8.4',
-        'requests>=2.31.0'
+        'requests>=2.31.0',
+        "quart"
     ],
     python_requires='>=3.7',
 )
