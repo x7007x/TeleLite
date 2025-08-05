@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='telelite',
-    version='0.1.1',
+    version='0.1.2',
     description='Lightweight Telegram Bot Library',
     author='YourName',
     packages=find_packages(),
