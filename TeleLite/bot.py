@@ -224,22 +224,16 @@ class Bot:
             return 'Alive 🕯️', 200
 
         @self.app.route('/webhook', methods=['POST'])
-        def handle_update():
+        def handle_webhook():
             update = request.get_json()
-            update_type = self.extract_main_key(update)
-            self.process_new_updates(update_type, update[update_type])
+            if not update:
+                return 'No Data', 400
+            update_type = self._extract_update_type(update)
+            if update_type and update_type in self.handlers:
+                data = update.get(update_type, {})
+                data = self._fix_reserved_keys(data)
+                self._process_handlers(update_type, data)
             return '🚀', 200
-            
-    def _handle_webhook(self):
-        update = request.get_json()
-        if not update:
-            return 'No Data', 400
-        update_type = self._extract_update_type(update)
-        if update_type and update_type in self.handlers:
-            data = update.get(update_type, {})
-            data = self._fix_reserved_keys(data)
-            self._process_handlers(update_type, data)
-        return 'OK', 200
 
     def _extract_update_type(self, update):
         for ut in update_types:
