@@ -1,7 +1,6 @@
 import asyncio
 import json
 import os
-import importlib
 from functools import wraps
 
 from flask import Flask, request
@@ -213,25 +212,24 @@ def match_filter(item, filt):
     return False
 
 class Bot:
-    def __init__(self, token, webhook=None, plugins=None):
+    def __init__(self, token, webhook=None):
         self.token = token
         self.api_url = f"https://api.telegram.org/bot{token}"
         self.handlers = {ut: [] for ut in update_types}
         self.webhook = webhook
         self.app = Flask(__name__)
-        self.plugins_dir = plugins
-        self.app.add_url_rule('/alive', 'alive', lambda: ('Alive 🕯️', 200))
-        self.app.add_url_rule('/webhook', 'webhook', self._handle_webhook, methods=['POST'])
-        self._load_plugins()
 
-    def _load_plugins(self):
-        if not self.plugins_dir:
-            return
-        for file in os.listdir(self.plugins_dir):
-            if file.endswith('.py') and not file.startswith('_'):
-                mod_name = file[:-3]
-                importlib.import_module(f'{self.plugins_dir}.{mod_name}')
+        @self.app.route('/alive')
+        def handle_alive():
+            return 'Alive 🕯️', 200
 
+        @self.app.route('/webhook', methods=['POST'])
+        def handle_update():
+            update = request.get_json()
+            update_type = self.extract_main_key(update)
+            self.process_new_updates(update_type, update[update_type])
+            return '🚀', 200
+            
     def _handle_webhook(self):
         update = request.get_json()
         if not update:
